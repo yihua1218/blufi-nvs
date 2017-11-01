@@ -88,6 +88,9 @@ static uint8_t gl_sta_bssid[6];
 static uint8_t gl_sta_ssid[32];
 static int gl_sta_ssid_len;
 
+/* Wi-Fi nvs_handle */
+nvs_handle wifi_handle;
+
 /* connect infor*/
 static uint8_t server_if;
 static uint16_t conn_id;
@@ -118,6 +121,14 @@ static esp_err_t example_net_event_handler(void *ctx, system_event_t *event)
         memcpy(gl_sta_bssid, event->event_info.connected.bssid, 6);
         memcpy(gl_sta_ssid, event->event_info.connected.ssid, event->event_info.connected.ssid_len);
         gl_sta_ssid_len = event->event_info.connected.ssid_len;
+        BLUFI_INFO("System Event STA Connected: SSID:(%s) PASSWORD:(%s)\n",
+            sta_config.sta.ssid,
+            sta_config.sta.password);
+        
+        ESP_ERROR_CHECK( nvs_set_str(wifi_handle, "sta.ssid", (char*)sta_config.sta.ssid) );
+        ESP_ERROR_CHECK( nvs_set_str(wifi_handle, "sta.password", (char*)sta_config.sta.password) );
+        ESP_ERROR_CHECK( nvs_commit(wifi_handle) );
+        nvs_close(wifi_handle);
         break; 
     case SYSTEM_EVENT_STA_DISCONNECTED:
         /* This is a workaround as ESP32 WiFi libs don't currently
@@ -155,6 +166,19 @@ static void initialise_wifi(void)
     ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
     ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK( esp_wifi_start() );
+
+    size_t required_size;
+    nvs_get_str(wifi_handle, "sta.ssid", (char*)sta_config.sta.ssid, &required_size);
+    nvs_get_str(wifi_handle, "sta.password", (char*)sta_config.sta.password, &required_size);
+
+    BLUFI_INFO("Load from NSV: SSID:(%s) PASSWORD:(%s)\n",
+        sta_config.sta.ssid,
+        sta_config.sta.password);
+        
+    if (sta_config.sta.ssid[0] != 0) {
+        esp_wifi_set_config(WIFI_IF_STA, &sta_config);
+        esp_wifi_connect();    
+    }
 }
 
 static esp_blufi_callbacks_t example_callbacks = {
@@ -328,6 +352,9 @@ void app_main()
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK( ret );
+
+    // Open Wi-Fi nvs_handle
+    nvs_open("wifi", NVS_READWRITE, &wifi_handle);                
 
     initialise_wifi();
 
